@@ -25,7 +25,7 @@ public class HierarchicalWheelTimer implements Timer {
 	final Set<HashedWheelTimeout>[][] wheel;
 
 	final int tickDuration;
-	
+
 	final int tickDurationInSeconds;
 
 	final int tickShiftLength;
@@ -167,7 +167,7 @@ public class HierarchicalWheelTimer implements Timer {
 		if (delay < tickDurationInSeconds) {
 			delay = tickDurationInSeconds;
 		}
-		int totalTicks = delay / tickDurationInSeconds;
+		int totalTicks = delay / tickDurationInSeconds + wheelCursor;
 		if (totalTicks >= maxTicks) {
 			System.out.println("delay too large");
 			return;
@@ -188,6 +188,8 @@ public class HierarchicalWheelTimer implements Timer {
 		lock.readLock().lock();
 		try {
 			// logger.info("add to wheel x={},y={},eachLevelIndex={}", new Object[] { targetLevel, totalTicks, eachLevelIndex });
+			timeout.stopIndex[0] = targetLevel;
+			timeout.stopIndex[1] = totalTicks;
 			wheel[targetLevel][totalTicks].add(timeout);
 		} finally {
 			lock.readLock().unlock();
@@ -312,6 +314,8 @@ public class HierarchicalWheelTimer implements Timer {
 					}
 					if (nextLevelIndex != 0) {
 						// logger.info("add to x={},y={}", nextWheelIndex, nextLevelIndex);
+						timeout.stopIndex[0] = nextWheelIndex;
+						timeout.stopIndex[1] = nextLevelIndex;
 						wheel[nextWheelIndex][nextLevelIndex].add(timeout);
 					} else {
 						expiredTimeouts.add(timeout);
@@ -379,7 +383,8 @@ public class HierarchicalWheelTimer implements Timer {
 
 		private final TimerTask task;
 		final long deadline;
-		volatile int[] eachLevelIndex;
+		private int[] eachLevelIndex;
+		volatile int[] stopIndex = new int[] { 0, 0 };
 		private final AtomicInteger state = new AtomicInteger(ST_INIT);
 
 		HashedWheelTimeout(TimerTask task, long deadline) {
@@ -396,7 +401,10 @@ public class HierarchicalWheelTimer implements Timer {
 		}
 
 		public void cancel() {
-			// TODO
+			if (!state.compareAndSet(ST_INIT, ST_CANCELLED)) {
+				return;
+			}
+			wheel[stopIndex[0]][stopIndex[1]].remove(this);
 		}
 
 		public boolean isCancelled() {
